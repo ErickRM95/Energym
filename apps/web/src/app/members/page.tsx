@@ -80,7 +80,7 @@ export default function MembersPage() {
       if (first.error?.message.includes("national_id")) {
         const retry = await supabase.from("profiles").select("id, full_name, email, status, phone, birth_date, gender, medical_notes, created_at").eq("role", "member").order("created_at", { ascending: false });
         if (retry.error) throw retry.error;
-        return retry.data;
+        return retry.data.map((row) => ({ ...row, national_id: null }));
       }
       if (first.error) throw first.error;
       return first.data;
@@ -202,7 +202,7 @@ export default function MembersPage() {
                         <form key={member.id} action={editAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           <input name="memberId" type="hidden" value={member.id} />
                           <Field label="Nombre *"><Input name="fullName" defaultValue={member.full_name} required /></Field>
-                          <Field label="Cédula"><Input name="nationalId" defaultValue={"national_id" in member ? member.national_id ?? "" : ""} /></Field>
+                          <Field label="Cédula"><Input name="nationalId" defaultValue={member.national_id ?? ""} /></Field>
                           <Field label="Fecha de nacimiento"><Input name="birthDate" type="date" defaultValue={member.birth_date ?? ""} /></Field>
                           <Field label="Género">
                             <Select name="gender" defaultValue={member.gender ?? ""}>
