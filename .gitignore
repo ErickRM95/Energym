@@ -1,0 +1,12 @@
+node_modules
+.turbo
+.next
+.expo
+dist
+.supabase
+supabase/.temp
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+_spec_extract.txt

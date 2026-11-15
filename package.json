@@ -1,0 +1,19 @@
+{
+  "name": "energym",
+  "private": true,
+  "packageManager": "npm@11.19.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "expo-router": "~58.0.31",
+    "turbo": "^2.6.1"
+  }
+}
