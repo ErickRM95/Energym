@@ -1,0 +1,303 @@
+
+===== PAGE 1 =====
+
+ESPECIFICACIÓN TÉCNICA Y ARQUITECTURA DE SOFTWARE (PRD)
+Energym — Plataforma Integral de Gestión Fitness
+Documento maestro de arquitectura para desarrollo asistido en Cursor (Portal Web Administrativo +
+App Móvil de Atletas + Motor de Rutinas con Google Gemini).
+Arquitectura: Monorepo SaaS Multi-tenant Backend & DB: Supabase (PostgreSQL)
+Motor IA: Google Gemini API Lenguaje Base: TypeScript
+1. Visión General del Producto
+Energym es un ecosistema digital diseñado para centros de entrenamiento, gimnasios boutique y
+entrenadores personales. El sistema centraliza la operación comercial, la retención de clientes y la
+prescripción inteligente de entrenamiento mediante dos aplicaciones sincronizadas en tiempo real:
+Energym Admin Web (apps/web): Portal de gestión para administradores, recepcionistas y
+entrenadores. Incluye CRM de socios, control de acceso por QR, facturación, calendario de
+clases grupales, gestión de promociones y generador de rutinas asistido por IA.
+Energym Mobile App (apps/mobile): Aplicación nativa para iOS y Android enfocada en el
+atleta. Permite ejecutar rutinas interactivas con temporizadores, reservar cupos en clases en
+tiempo real, canjear promociones vigentes, monitorear medidas antropométricas y presentar su
+pase de entrada QR.
+2. Stack Tecnológico Obligatorio
+Capa / Componente Tecnología Seleccionada Justificación Técnica (Optimización Cursor)
+Estructura Monorepo Turborepo (apps/web,
+apps/mobile, packages/shared)
+Comparte tipos de base de datos,
+esquemas de validación Zod y
+constantes entre web y móvil sin
+duplicar código.
+Base de Datos y Auth Supabase (PostgreSQL, Auth, Storage,
+Realtime, Edge Functions)
+Aislamiento Multi-tenant nativo mediante
+Row Level Security (RLS), generación
+automática de tipos TypeScript y
+ejecución segura en el servidor.
+Web Administrativa Next.js (App Router), TypeScript,
+Tailwind CSS, Shadcn/UI, TanStack
+Query
+Renderizado híbrido rápido, tablas
+administrativas complejas, formularios
+tipados y alta precisión de generación
+de código en Cursor.
+App Móvil (iOS /
+Android)
+React Native con Expo SDK, Expo
+Router, TypeScript, NativeWind
+Despliegue unificado para ambas
+tiendas, soporte offline con
+AsyncStorage y notificaciones push
+nativas mediante Expo Push.
+Energym — Especificación Técnica y Arquitectura de Software Page 1 of 7
+
+===== PAGE 2 =====
+
+Capa / Componente Tecnología Seleccionada Justificación Técnica (Optimización Cursor)
+Inteligencia Artificial Google Gemini API (@google/genai)
+vía Supabase Edge Functions
+Generación estructurada (Structured
+Outputs JSON) de planes de
+entrenamiento personalizados validados
+contra la biblioteca real de ejercicios.
+3. Motor de Rutinas con IA (Integración Google Gemini)
+Regla de Arquitectura IA: Las llamadas a la API de Google Gemini nunca deben ejecutarse desde
+el cliente móvil o navegador. Toda generación ocurre dentro de una Supabase Edge Function
+(generate-ai-routine) utilizando la clave GEMINI_API_KEY almacenada en los secretos del
+servidor.
+El flujo de creación inteligente de rutinas combina los datos biométricos del miembro con el
+inventario real de equipamiento y ejercicios del gimnasio:
+1. Recolección de Contexto: El entrenador (desde Web) o el atleta (si tiene habilitado el
+autogenerador en Móvil) define objetivo (hipertrofia, pérdida de grasa, fuerza, resistencia), días
+disponibles por semana, nivel de experiencia, lesiones o restricciones físicas y duración por
+sesión.
+2. Inyección de Catálogo Real: La Edge Function consulta las últimas medidas corporales
+(body_measurements) del miembro y extrae el catálogo activo de exercises_library de la
+organización para garantizar que la IA solo prescriba ejercicios disponibles en el gimnasio.
+3. Salida Estructurada (Structured JSON): Se invoca al modelo gemini-2.5-flash con un
+esquema JSON estricto (responseSchema) que devuelve los días de entrenamiento, orden de
+ejercicios, series, rango de repeticiones, tiempos de descanso en segundos, RPE objetivo y notas
+técnicas.
+4. Revisión y Persistencia: El entrenador visualiza el borrador generado, puede ajustar cargas o
+sustituir ejercicios con un clic y guarda la rutina directamente en las tablas routines,
+routine_days y routine_exercises con la bandera generated_by_ai = true.
+4. Módulo de Promociones, Cupones y Campañas
+Este módulo permite al equipo administrativo crear incentivos comerciales para captar nuevos
+miembros, reactivar cuentas vencidas y premiar referidos, integrándose directamente con el flujo de
+suscripciones y pagos:
+Energym — Especificación Técnica y Arquitectura de Software Page 2 of 7
+
+===== PAGE 3 =====
+
+Tipos de Promoción Soportados: Descuento porcentual (ej. 20% en matrícula), monto fijo de
+descuento, días adicionales gratis (ej. paga 1 mes y recibe 45 días), paquetes de créditos extra
+para clases grupales y promociones 2x1 o plan parejas.
+Reglas de Vigencia y Restricción: Control por fechas de inicio y fin, límite global de usos
+(max_redemptions), límite por usuario (max_per_member), restricción a planes específicos y
+segmentación por audiencia (solo nuevos ingresos, renovaciones o público general).
+Canje en Web y App Móvil: Los administradores pueden aplicar un código promocional en
+recepción al registrar un pago, o publicar campañas destacadas en un carrusel dentro de la App
+Móvil para que el atleta las aplique al renovar su membresía.
+Trazabilidad Financiera: Cada canje queda registrado en promotion_redemptions, vinculando
+el monto original, el descuento aplicado, el monto final cobrado y la suscripción resultante.
+5. Esquema de Base de Datos (PostgreSQL / Supabase)
+Todas las tablas operativas incluyen organization_id (UUID) para garantizar aislamiento Multi-
+tenant mediante políticas Row Level Security (RLS).
+Dominio Tabla Columnas Principales y Relaciones
+Núcleo y Usuarios organizations id, name, slug, logo_url, timezone,
+currency, ai_routines_enabled,
+created_at
+profiles id (FK auth.users), organization_id,
+role ('super_admin' | 'gym_admin' |
+'trainer' | 'member'), full_name, email,
+phone, birth_date, gender,
+medical_notes, status, qr_code_token
+Membresías y
+Finanzas
+membership_plans id, organization_id, name, description,
+price, duration_days, class_credits,
+is_active
+member_subscriptions id, organization_id, member_id,
+plan_id, promotion_id (nullable),
+start_date, end_date,
+remaining_credits, status ('active' |
+'expired' | 'pending_payment' |
+'cancelled')
+payments id, organization_id, subscription_id,
+member_id, original_amount,
+discount_amount, final_amount,
+payment_method, reference_number,
+paid_at
+Energym — Especificación Técnica y Arquitectura de Software Page 3 of 7
+
+===== PAGE 4 =====
+
+Dominio Tabla Columnas Principales y Relaciones
+Promociones y
+Campañas
+promotions id, organization_id, code (único por org),
+title, description, banner_url,
+discount_type ('percentage' |
+'fixed_amount' | 'extra_days' |
+'extra_credits'), discount_value,
+applicable_plan_ids (UUID[]),
+target_audience ('all' | 'new_members'
+| 'renewals'), starts_at, ends_at,
+max_redemptions, current_redemptions,
+show_in_mobile_app, is_active
+promotion_redemptions id, organization_id, promotion_id,
+member_id, subscription_id,
+discount_applied, redeemed_at
+Rutinas e IA (Gemini) exercises_library id, organization_id (null = global), name,
+muscle_group, equipment, difficulty,
+instructions, video_url,
+thumbnail_url
+routines id, organization_id, member_id,
+trainer_id, name, goal,
+generated_by_ai (boolean),
+ai_prompt_context (jsonb), start_date,
+end_date, is_active
+routine_days id, routine_id, day_number, name,
+focus_area
+routine_exercises id, routine_day_id, exercise_id,
+order_index, sets, reps, rest_seconds,
+target_rpe, trainer_notes
+workout_logs id, member_id, routine_exercise_id,
+set_number, weight_kg, reps_completed,
+logged_at
+Clases y Control de
+Acceso
+class_types id, organization_id, name,
+description, color_hex,
+duration_minutes
+class_schedules id, organization_id, class_type_id,
+trainer_id, start_time, end_time,
+max_capacity, status
+class_bookings id, class_schedule_id, member_id,
+status ('confirmed' | 'waitlist' |
+'cancelled' | 'attended' | 'no_show'),
+booked_at, checked_in_at
+Energym — Especificación Técnica y Arquitectura de Software Page 4 of 7
+
+===== PAGE 5 =====
+
+Dominio Tabla Columnas Principales y Relaciones
+gym_access_logs id,
+organization_id,
+member_id,
+checked_in_at,
+access_method
+('qr_scan' |
+'manual'), status
+('granted' |
+'denied_expired' |
+'denied_suspended')
+Progreso Físico body_measurements id, member_id, recorded_by, recorded_at,
+weight_kg, height_cm, body_fat_pct,
+muscle_mass_kg, chest_cm, waist_cm,
+hips_cm, arm_cm, thigh_cm, notes
+progress_photos id, member_id, measurement_id,
+photo_url (Storage privado), angle ('front'
+| 'side' | 'back'), taken_at
+6. Requerimientos Funcionales por Plataforma
+6.1. Portal Web Administrativo (apps/web)
+Dashboard Ejecutivo: KPIs en tiempo real de miembros activos, ingresos brutos vs. descuentos
+por promociones, ocupación diaria de clases, alertas de vencimientos próximos y rutinas
+generadas con IA.
+CRM de Miembros y Check-in: Gestión integral de fichas de atletas, historial clínico/lesiones,
+validación de acceso en recepción mediante lector QR o búsqueda rápida, y emisión de estados
+de cuenta.
+Estudio de Rutinas con Gemini IA: Constructor visual híbrido donde el entrenador puede
+generar una rutina completa con Gemini en segundos o editar manualmente días, series,
+descansos y videos demostrativos.
+Gestor de Promociones y Campañas: Panel para crear códigos de descuento, configurar
+banners promocionales para la app móvil, definir vigencias y auditar el retorno de inversión (ROI)
+por campaña.
+Calendario de Clases y Finanzas: Programación de horarios recurrentes, asignación de
+instructores, control de asistencia y exportación de reportes financieros.
+Energym — Especificación Técnica y Arquitectura de Software Page 5 of 7
+
+===== PAGE 6 =====
+
+6.2. Aplicación Móvil de Atletas (apps/mobile)
+Inicio y Pase Digital QR: Pantalla principal con saludo personalizado, días restantes de
+membresía, código QR dinámico para acceso al gimnasio, acceso directo al entrenamiento del
+día y carrusel de promociones activas.
+Entrenamiento Interactivo: Visualización de la rutina asignada con videos/GIFs por ejercicio,
+temporizador automático de descanso entre series y registro rápido de peso levantado y
+repeticiones.
+Reservas de Clases Grupales: Explorador semanal con indicadores de cupos en tiempo real,
+reserva y cancelación en un toque, y lista de espera automática.
+Evolución y Récords Personales: Gráficas de progreso de peso corporal, porcentaje de grasa,
+cargas máximas (PR) y galería privada comparativa de fotos.
+Renovación y Canje de Cupones: Visualización de planes disponibles con campo para ingresar
+códigos promocionales y validación instantánea del beneficio aplicado.
+7. Reglas de Negocio y Seguridad para Cursor
+1. Aislamiento Estricto por RLS: Toda consulta debe filtrarse por organization_id. Un member
+solo accede a sus propios registros; un trainer accede a los miembros de su organización; un
+gym_admin administra toda la configuración de su sede.
+2. Operaciones Atómicas (PostgreSQL RPC): Implementar funciones transaccionales con
+bloqueo de fila (FOR UPDATE) para reservar cupos en clases (book_class_slot) y canjear
+promociones con límite de uso (redeem_promotion_code), evitando condiciones de carrera.
+3. Validación Estricta de Salidas de Gemini: Todo JSON devuelto por Google Gemini debe
+validarse con Zod antes de guardarse en Supabase, asegurando que cada exercise_id exista
+realmente en la tabla exercises_library.
+4. Tipado Compartido y Cero any: Generar el archivo database.types.ts directamente desde
+el esquema de Supabase y reutilizarlo en packages/shared para Web, Móvil y Edge Functions.
+5. Resiliencia Offline en Móvil: Cachear la rutina activa del día y el código QR en almacenamiento
+local (AsyncStorage / TanStack Query Persist) para garantizar funcionamiento en zonas del
+gimnasio con baja cobertura de red.
+8. Plan de Implementación por Fases (Roadmap)
+Fase Entregables Técnicos Criterio de Aceptación
+Fase 1: Base Inicialización de Turborepo (web, mobile,
+shared), migraciones SQL en Supabase,
+políticas RLS y generación de tipos TS.
+Base de datos desplegada con
+aislamiento Multi-tenant verificado y
+autenticación funcional por roles.
+Fase 2: Core
+Web y
+Promociones
+Dashboard admin, CRM de miembros, planes
+de membresía, módulo de
+promociones/cupones, RPC de canje y registro
+de pagos.
+Alta de socios, aplicación exitosa de
+descuentos promocionales y cálculo
+correcto de montos finales.
+Energym — Especificación Técnica y Arquitectura de Software Page 6 of 7
+
+===== PAGE 7 =====
+
+Fase Entregables Técnicos Criterio de Aceptación
+Fase 3: Rutinas
++ Gemini IA
+Biblioteca de ejercicios, Edge Function con
+Google Gemini API, constructor web de rutinas
+y vista de ejecución en app móvil.
+Generación de rutinas estructuradas en
+menos de 8 segundos y registro de
+cargas en móvil.
+Fase 4: Clases
+y Acceso QR
+Calendario web de clases, RPC atómica de
+reservas, pantalla móvil de reservas y escáner
+QR de acceso en recepción.
+Cero sobreventa de cupos bajo
+concurrencia y validación instantánea
+de membresías activas/vencidas.
+Fase 5:
+Progreso y
+Push
+Registro de medidas corporales, galería
+privada de progreso, gráficas evolutivas y
+notificaciones push con Expo.
+Visualización de curvas de progreso y
+envío automático de recordatorios de
+clases y vencimientos.
+Prompt Inicial Recomendado para Cursor
+Lee el documento técnico de Energym. Inicializa un monorepo con Turborepo que 
+contenga apps/web (Next.js App Router + Tailwind + Shadcn/UI), apps/mobile (Expo 
+Router + NativeWind) y packages/shared (esquemas Zod y tipos). Crea la primera 
+migración SQL completa en supabase/migrations con todas las tablas de la sección 
+5, índices de rendimiento, políticas RLS multi-tenant y las funciones RPC atómicas 
+book_class_slot y redeem_promotion_code.
+Energym — Especificación Técnica y Arquitectura de Software Page 7 of 7
