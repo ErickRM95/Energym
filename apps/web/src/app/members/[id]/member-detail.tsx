@@ -1,16 +1,25 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { saveMeasurement, shareMemberAccess, subscribeMember, updateMedicalNotes, updateMember, type ActionState } from "@/app/actions";
+import { deleteMember, saveMeasurement, shareMemberAccess, subscribeMember, updateMedicalNotes, updateMember, type ActionState } from "@/app/actions";
 import { FormNote } from "@/components/form-note";
 import { ShareAccess } from "@/components/share-access";
+import { useProfile } from "@/components/use-profile";
 import { Button, Card, Field, Input, Select, TextArea } from "@/components/ui";
 import { day, money } from "@/lib/format";
 import { createClient } from "@/lib/supabase/browser";
 
 export function MemberDetail({ id }: { id: string }) {
+  const router = useRouter();
+  const me = useProfile();
+  const canDelete = me.data?.role === "gym_admin" || me.data?.role === "super_admin";
+  const [deleteState, deleteAction, deletePending] = useActionState<ActionState, FormData>(deleteMember, {});
   const [editState, editAction, editPending] = useActionState<ActionState, FormData>(updateMember, {});
+  useEffect(() => {
+    if (deleteState.ok) router.push("/members");
+  }, [deleteState.ok, router]);
   const [shareState, shareAction, sharePending] = useActionState<ActionState, FormData>(shareMemberAccess, {});
   const [notesState, notesAction] = useActionState<ActionState, FormData>(updateMedicalNotes, {});
   const [payState, payAction] = useActionState<ActionState, FormData>(subscribeMember, {});
@@ -35,7 +44,16 @@ export function MemberDetail({ id }: { id: string }) {
   return (
     <section className="mx-auto flex max-w-6xl flex-col gap-6">
       <div>
-        <h1 className="text-4xl font-semibold">{profile.full_name}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-4xl font-semibold">{profile.full_name}</h1>
+          {canDelete ? (
+            <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? También se borra su acceso a la app.")) event.preventDefault(); }}>
+              <input name="memberId" type="hidden" value={profile.id} />
+              <Button variant="danger" disabled={deletePending} type="submit">{deletePending ? "Eliminando…" : "Eliminar cliente"}</Button>
+            </form>
+          ) : null}
+        </div>
+        {deleteState.error ? <div className="mt-3"><FormNote state={deleteState} /></div> : null}
         <p className="text-muted-foreground">{profile.email}{profile.phone ? ` · ${profile.phone}` : ""}{profile.national_id ? ` · cédula ${profile.national_id}` : ""}</p>
         <p className="mt-2 font-mono text-xs">QR {profile.qr_code_token}</p>
       </div>

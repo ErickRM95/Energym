@@ -132,6 +132,7 @@ export const routineDraftSchema = z.object({
 
 export const saveRoutineSchema = routineDraftSchema.extend({
   memberId: z.uuid(),
+  routineId: z.uuid().optional(),
   generatedByAi: z.boolean().default(false),
   aiPromptContext: z.record(z.string(), z.unknown()).nullable().default(null),
 });
@@ -146,6 +147,7 @@ export const aiRoutineRequestSchema = z.object({
 });
 
 export const classScheduleSchema = z.object({
+  scheduleId: z.uuid().optional(),
   classTypeId: z.uuid(),
   trainerId: z.uuid().nullable().default(null),
   startTime: z.string().min(1),

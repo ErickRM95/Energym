@@ -82,6 +82,15 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      member_invites: Table<{
+        code: string;
+        organization_id: string;
+        member_id: string;
+        full_name: string;
+        email: string;
+        access_password: string;
+        created_at: string;
+      }>;
       member_subscriptions: Table<{
         id: string;
         organization_id: string;

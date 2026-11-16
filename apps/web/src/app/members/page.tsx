@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { Fragment, useActionState, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { attachProvisionedMembers, createMember, shareMemberAccess, updateMember, type ActionState, type AppAccessShare } from "@/app/actions";
+import { attachProvisionedMembers, createMember, deleteMember, shareMemberAccess, updateMember, type ActionState, type AppAccessShare } from "@/app/actions";
 import { FormNote } from "@/components/form-note";
 import { accessLink, ShareAccess } from "@/components/share-access";
 import { Badge, Button, Card, Field, Input, Select, TextArea } from "@/components/ui";
+import { useProfile } from "@/components/use-profile";
 import { readFitnessNotes } from "@/lib/fitness-notes";
 import { createClient } from "@/lib/supabase/browser";
 
 export default function MembersPage() {
   const [state, action, pending] = useActionState<ActionState, FormData>(createMember, {});
   const [editState, editAction, editPending] = useActionState<ActionState, FormData>(updateMember, {});
+  const [deleteState, deleteAction, deletePending] = useActionState<ActionState, FormData>(deleteMember, {});
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [shareNote, setShareNote] = useState("");
@@ -52,6 +54,8 @@ export default function MembersPage() {
     setCopying(false);
   }
   const queryClient = useQueryClient();
+  const me = useProfile();
+  const canDelete = me.data?.role === "gym_admin" || me.data?.role === "super_admin";
   useEffect(() => {
     if (state.share) setOpen(false);
     else if (state.error) setOpen(true);
@@ -71,6 +75,11 @@ export default function MembersPage() {
   useEffect(() => {
     if (editState.ok) setEditingId(null);
   }, [editState]);
+  useEffect(() => {
+    if (!deleteState.ok) return;
+    setEditingId(null);
+    void queryClient.invalidateQueries({ queryKey: ["members"] });
+  }, [deleteState, queryClient]);
   const members = useQuery({
     queryKey: ["members"],
     queryFn: async () => {
@@ -159,6 +168,7 @@ export default function MembersPage() {
             </div>
           </form> : null}
         </Card>
+        {deleteState.ok || deleteState.error ? <div className="mt-4"><FormNote state={deleteState} /></div> : null}
         <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted text-muted-foreground">
@@ -191,9 +201,17 @@ export default function MembersPage() {
                       <Badge tone={member.status === "active" ? "good" : "bad"}>{member.status}</Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button type="button" variant="outline" onClick={() => { setShareNote(""); setReadyShare(null); setEditingId((current) => current === member.id ? null : member.id); }}>
-                        {editingId === member.id ? "Cerrar" : "Editar"}
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={() => { setShareNote(""); setReadyShare(null); setEditingId((current) => current === member.id ? null : member.id); }}>
+                          {editingId === member.id ? "Cerrar" : "Editar"}
+                        </Button>
+                        {canDelete ? (
+                          <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? También se borra su acceso a la app.")) event.preventDefault(); }}>
+                            <input name="memberId" type="hidden" value={member.id} />
+                            <Button variant="danger" disabled={deletePending} type="submit">Eliminar</Button>
+                          </form>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                   {editingId === member.id ? (

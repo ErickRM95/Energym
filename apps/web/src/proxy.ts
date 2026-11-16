@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
   const isAuthScreen = path === "/login" || path === "/signup";
-  const isPublic = isAuthScreen || path.startsWith("/acceso/invitar") || path === "/movil" || path.startsWith("/movil/");
+  const isPublic = isAuthScreen || path.startsWith("/acceso/invitar") || /^\/i\/[a-z0-9]{8}$/.test(path) || path === "/movil" || path.startsWith("/movil/");
 
   if (!data.user && !isPublic) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));

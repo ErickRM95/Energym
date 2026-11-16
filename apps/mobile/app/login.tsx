@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { AppearanceSwitch } from "@/components/appearance-switch";
 import { BrandLogo } from "@/components/brand-logo";
+import { InstallShortcut } from "@/components/install-shortcut";
 import { useTheme } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 
@@ -37,6 +38,7 @@ export default function LoginScreen() {
       <Pressable className="mt-6 items-center rounded-full bg-[#c6f135] py-3" onPress={() => void enter()}>
         <Text className="font-semibold text-[#142000]">Entrar</Text>
       </Pressable>
+      <InstallShortcut />
       </View>
     </View>
   );

@@ -6,13 +6,7 @@ import type { AppAccessShare } from "@/app/actions";
 import { Button } from "@/components/ui";
 
 export function accessLink(origin: string, share: AppAccessShare) {
-  const hash = new URLSearchParams({
-    nombre: share.name,
-    correo: share.email,
-    clave: share.password,
-    pase: share.pass,
-  }).toString();
-  return `${origin}/acceso/invitar#${hash}`;
+  return `${origin}/i/${share.code}`;
 }
 
 export function ShareAccess({ share }: { share: AppAccessShare }) {

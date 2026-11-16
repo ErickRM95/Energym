@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Image, ScrollView, Text, View } from "react-native";
+import { InstallShortcut } from "@/components/install-shortcut";
 import { supabase } from "@/lib/supabase";
 import { tipsForToday } from "@/lib/wellness-tips";
 
@@ -34,6 +35,7 @@ export default function HomeScreen() {
     <ScrollView className="flex-1 bg-[#f3f4ef] dark:bg-[#101410]" contentContainerClassName="gap-4 px-5 py-6">
       <Text className="text-3xl font-semibold text-[#161915] dark:text-white">Hola, {home.data?.profile?.full_name ?? "atleta"}</Text>
       <Text className="text-[#3d5c0a] dark:text-[#c6f135]">{days === null ? "Sin membresía activa" : `${days} días de membresía`}</Text>
+      <InstallShortcut />
       {(home.data?.news.length ?? 0) > 0 ? (
         <View className="gap-3">
           <Text className="text-lg font-semibold text-[#161915] dark:text-white">Noticias</Text>

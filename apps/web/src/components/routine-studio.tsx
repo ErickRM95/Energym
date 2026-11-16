@@ -27,7 +27,7 @@ const emptyDraft = (): RoutineDraft => ({
   days: [{ day_number: 1, name: "Día 1", focus_area: "Cuerpo completo", exercises: [] }],
 });
 
-export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
+export function RoutineStudio({ onSaved, routineId }: { onSaved?: () => void; routineId?: string }) {
   const queryClient = useQueryClient();
   const [memberId, setMemberId] = useState("");
   const [goal, setGoal] = useState("hipertrofia");
@@ -39,6 +39,7 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
   const [generatedByAi, setGeneratedByAi] = useState(false);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [loaded, setLoaded] = useState(!routineId);
   const catalog = useQuery({
     queryKey: ["studio"],
     queryFn: async () => {
@@ -51,6 +52,51 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
     },
   });
   const exercises = catalog.data?.exercises ?? [];
+  useEffect(() => {
+    if (!routineId) return;
+    let active = true;
+    void (async () => {
+      const supabase = createClient();
+      const routine = await supabase.from("routines").select("name, goal, member_id, generated_by_ai").eq("id", routineId).maybeSingle();
+      if (!active) return;
+      if (!routine.data) {
+        setLoaded(true);
+        setMessage("No se encontró la rutina.");
+        return;
+      }
+      const days = await supabase.from("routine_days").select("id, day_number, name, focus_area").eq("routine_id", routineId).order("day_number");
+      const dayIds = (days.data ?? []).map((day) => day.id);
+      const exercisesForDays = dayIds.length
+        ? await supabase.from("routine_exercises").select("routine_day_id, exercise_id, order_index, sets, reps, rest_seconds, target_rpe, trainer_notes").in("routine_day_id", dayIds).order("order_index")
+        : { data: [] };
+      if (!active) return;
+      setMemberId(routine.data.member_id);
+      setGoal(routine.data.goal);
+      setGeneratedByAi(routine.data.generated_by_ai);
+      setLoaded(true);
+      setDraft({
+        name: routine.data.name,
+        goal: routine.data.goal,
+        days: (days.data ?? []).map((day) => ({
+          day_number: day.day_number,
+          name: day.name,
+          focus_area: day.focus_area,
+          exercises: (exercisesForDays.data ?? []).filter((exercise) => exercise.routine_day_id === day.id).map((exercise) => ({
+            exercise_id: exercise.exercise_id,
+            order_index: exercise.order_index,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            rest_seconds: exercise.rest_seconds,
+            target_rpe: exercise.target_rpe,
+            trainer_notes: exercise.trainer_notes,
+          })),
+        })),
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [routineId]);
   useEffect(() => {
     if (!memberId) return;
     void createClient().from("profiles").select("medical_notes").eq("id", memberId).maybeSingle().then(({ data }) => {
@@ -105,7 +151,9 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
     const formData = new FormData();
     formData.set("payload", JSON.stringify({
       ...draft,
+      goal,
       memberId,
+      routineId,
       generatedByAi,
       aiPromptContext: generatedByAi ? { goal, daysPerWeek, experience, sessionMinutes, injuries } : null,
     }));
@@ -117,6 +165,7 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
     }
   }
 
+  if (routineId && !loaded) return <p className="text-sm text-muted-foreground">Cargando rutina…</p>;
   return (
     <div className="flex flex-col gap-6">
       <Card className="grid gap-3 md:grid-cols-3">
@@ -129,7 +178,7 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
           </Select>
         </Field>
         <Field label="Objetivo">
-          <Select value={goal} onChange={(event) => setGoal(event.target.value)}>
+          <Select value={goal} onChange={(event) => { setGoal(event.target.value); setDraft((current) => ({ ...current, goal: event.target.value })); }}>
             <option value="hipertrofia">Hipertrofia</option>
             <option value="perdida_de_grasa">Pérdida de grasa</option>
             <option value="fuerza">Fuerza</option>
@@ -195,7 +244,7 @@ export function RoutineStudio({ onSaved }: { onSaved?: () => void }) {
           </div>
         </Card>
       ))}
-      <Button onClick={() => void persist()} type="button">Guardar rutina</Button>
+      <Button onClick={() => void persist()} type="button">{routineId ? "Guardar cambios" : "Guardar rutina"}</Button>
     </div>
   );
 }

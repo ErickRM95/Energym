@@ -21,12 +21,41 @@ import { fitnessNotesText } from "@/lib/fitness-notes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-export type AppAccessShare = { name: string; email: string; password: string; pass: string };
+export type AppAccessShare = { name: string; email: string; password: string; pass: string; code: string };
 export type ActionState = { error?: string; ok?: string; detail?: string; share?: AppAccessShare };
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+const inviteAlphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+
+function inviteCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (byte) => inviteAlphabet[byte % inviteAlphabet.length]).join("");
+}
+
+async function saveMemberInvite(
+  admin: ReturnType<typeof createAdminClient>,
+  invite: { organizationId: string; memberId: string; name: string; email: string; password: string },
+) {
+  const removed = await admin.from("member_invites").delete().eq("member_id", invite.memberId);
+  if (removed.error) return { error: removed.error.message };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const code = inviteCode();
+    const inserted = await admin.from("member_invites").insert({
+      code,
+      organization_id: invite.organizationId,
+      member_id: invite.memberId,
+      full_name: invite.name,
+      email: invite.email,
+      access_password: invite.password,
+    });
+    if (!inserted.error) return { code };
+    if (!inserted.error.message.includes("duplicate")) return { error: inserted.error.message };
+  }
+  return { error: "No se pudo crear el enlace." };
 }
 
 function issue(error: { issues: { message: string }[] }) {
@@ -189,11 +218,20 @@ export async function createMember(_state: ActionState, formData: FormData): Pro
       saved = await admin.from("profiles").upsert(profileBase).select("qr_code_token").single();
     }
     if (saved.error) return { error: saved.error.message };
+    const invited = await saveMemberInvite(admin, {
+      organizationId: gate.profile.organization_id,
+      memberId: data.user.id,
+      name: parsed.data.fullName,
+      email: parsed.data.email,
+      password,
+    });
+    if ("error" in invited) return { error: invited.error };
     const share = {
       name: parsed.data.fullName,
       email: parsed.data.email,
       password,
       pass: saved.data.qr_code_token,
+      code: invited.code,
     };
     if (weight.value || height.value) {
       const measured = await gate.supabase.from("body_measurements").insert({
@@ -343,13 +381,52 @@ export async function shareMemberAccess(_state: ActionState, formData: FormData)
     const admin = createAdminClient();
     const { error: authError } = await admin.auth.admin.updateUserById(member.id, { password });
     if (authError) return { error: authError.message };
+    const invited = await saveMemberInvite(admin, {
+      organizationId: gate.profile.organization_id,
+      memberId: member.id,
+      name: member.full_name,
+      email: member.email,
+      password,
+    });
+    if ("error" in invited) return { error: invited.error };
+    return {
+      ok: "Enlace listo. La contraseña anterior ya no sirve.",
+      share: { name: member.full_name, email: member.email, password, pass: member.qr_code_token, code: invited.code },
+    };
   } catch (authError) {
     return { error: authError instanceof Error ? authError.message : "No se pudo preparar el acceso." };
   }
-  return {
-    ok: "Enlace listo. La contraseña anterior ya no sirve.",
-    share: { name: member.full_name, email: member.email, password, pass: member.qr_code_token },
-  };
+}
+
+export async function deleteMember(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const gate = await staff();
+  if ("error" in gate) return gate;
+  if (gate.profile.role === "trainer") return { error: "Solo un administrador puede eliminar clientes." };
+  const memberId = text(formData, "memberId");
+  if (!memberId || memberId === gate.profile.id) return { error: "No se puede eliminar esta cuenta." };
+  const { data: member, error } = await gate.supabase.from("profiles").select("id, role, organization_id").eq("id", memberId).single();
+  if (error || !member || member.role !== "member" || member.organization_id !== gate.profile.organization_id) return { error: "No se encontró el cliente." };
+  try {
+    const admin = createAdminClient();
+    const subscriptions = await admin.from("member_subscriptions").select("id").eq("member_id", memberId);
+    if (subscriptions.error) return { error: subscriptions.error.message };
+    const subscriptionIds = (subscriptions.data ?? []).map((row) => row.id);
+    if (subscriptionIds.length > 0) {
+      const byPlan = await admin.from("payments").delete().in("subscription_id", subscriptionIds);
+      if (byPlan.error) return { error: byPlan.error.message };
+    }
+    const payments = await admin.from("payments").delete().eq("member_id", memberId);
+    if (payments.error) return { error: payments.error.message };
+    const redemptions = await admin.from("promotion_redemptions").delete().eq("member_id", memberId);
+    if (redemptions.error) return { error: redemptions.error.message };
+    const removedPlans = await admin.from("member_subscriptions").delete().eq("member_id", memberId);
+    if (removedPlans.error) return { error: removedPlans.error.message };
+    const { error: authError } = await admin.auth.admin.deleteUser(memberId);
+    if (authError) return { error: authError.message };
+  } catch (deleteError) {
+    return { error: deleteError instanceof Error ? deleteError.message : "No se pudo eliminar el cliente." };
+  }
+  return { ok: "Cliente eliminado." };
 }
 
 export async function savePlan(_state: ActionState, formData: FormData): Promise<ActionState> {
@@ -583,29 +660,49 @@ export async function saveRoutine(_state: ActionState, formData: FormData): Prom
   const { data: catalog } = await gate.supabase.from("exercises_library").select("id").in("id", ids);
   const allowed = new Set((catalog ?? []).map((row) => row.id));
   if (ids.some((id) => !allowed.has(id))) return { error: "La rutina incluye ejercicios que no están en la biblioteca." };
-  await gate.supabase.from("routines").update({ is_active: false }).eq("member_id", parsed.data.memberId).eq("is_active", true);
-  const { data: routine, error } = await gate.supabase
-    .from("routines")
-    .insert({
-      organization_id: gate.profile.organization_id,
+  const routineId = parsed.data.routineId;
+  let savedId = routineId;
+  if (routineId) {
+    const existing = await gate.supabase.from("routines").select("id").eq("id", routineId).eq("organization_id", gate.profile.organization_id).maybeSingle();
+    if (!existing.data) return { error: "No se encontró la rutina." };
+    const updated = await gate.supabase.from("routines").update({
       member_id: parsed.data.memberId,
       trainer_id: gate.profile.id,
       name: parsed.data.name,
       goal: parsed.data.goal,
       generated_by_ai: parsed.data.generatedByAi,
       ai_prompt_context: parsed.data.aiPromptContext as Json,
-      is_active: true,
-      start_date: new Date().toISOString().slice(0, 10),
-    })
-    .select("id")
-    .single();
-  if (error || !routine) return { error: human(error?.message ?? "No se pudo guardar la rutina.") };
+    }).eq("id", routineId);
+    if (updated.error) return { error: human(updated.error.message) };
+    const removed = await gate.supabase.from("routine_days").delete().eq("routine_id", routineId);
+    if (removed.error) return { error: human(removed.error.message) };
+  } else {
+    await gate.supabase.from("routines").update({ is_active: false }).eq("member_id", parsed.data.memberId).eq("is_active", true);
+    const { data: routine, error } = await gate.supabase
+      .from("routines")
+      .insert({
+        organization_id: gate.profile.organization_id,
+        member_id: parsed.data.memberId,
+        trainer_id: gate.profile.id,
+        name: parsed.data.name,
+        goal: parsed.data.goal,
+        generated_by_ai: parsed.data.generatedByAi,
+        ai_prompt_context: parsed.data.aiPromptContext as Json,
+        is_active: true,
+        start_date: new Date().toISOString().slice(0, 10),
+      })
+      .select("id")
+      .single();
+    if (error || !routine) return { error: human(error?.message ?? "No se pudo guardar la rutina.") };
+    savedId = routine.id;
+  }
+  if (!savedId) return { error: "No se pudo guardar la rutina." };
   for (const day of parsed.data.days) {
     const { data: savedDay, error: dayError } = await gate.supabase
       .from("routine_days")
       .insert({
         organization_id: gate.profile.organization_id,
-        routine_id: routine.id,
+        routine_id: savedId,
         day_number: day.day_number,
         name: day.name,
         focus_area: day.focus_area,
@@ -628,7 +725,7 @@ export async function saveRoutine(_state: ActionState, formData: FormData): Prom
     );
     if (exerciseError) return { error: human(exerciseError.message) };
   }
-  return { ok: "Rutina asignada." };
+  return { ok: routineId ? "Rutina actualizada." : "Rutina asignada." };
 }
 
 export async function subscribeMember(_state: ActionState, formData: FormData): Promise<ActionState> {
@@ -693,6 +790,7 @@ export async function saveClass(_state: ActionState, formData: FormData): Promis
   const gate = await staff();
   if ("error" in gate) return gate;
   const parsed = classScheduleSchema.safeParse({
+    scheduleId: text(formData, "scheduleId") || undefined,
     classTypeId: text(formData, "classTypeId"),
     trainerId: text(formData, "trainerId") || null,
     startTime: text(formData, "startTime"),
@@ -701,6 +799,20 @@ export async function saveClass(_state: ActionState, formData: FormData): Promis
     occurrences: Number(text(formData, "occurrences") || 1),
   });
   if (!parsed.success) return { error: issue(parsed.error) };
+  if (parsed.data.scheduleId) {
+    const reserved = await gate.supabase.from("class_bookings").select("id", { count: "exact", head: true }).eq("class_schedule_id", parsed.data.scheduleId).eq("status", "confirmed");
+    if (reserved.error) return { error: human(reserved.error.message) };
+    if ((reserved.count ?? 0) > parsed.data.maxCapacity) return { error: "El cupo no puede ser menor que las reservas confirmadas." };
+    const { error } = await gate.supabase.from("class_schedules").update({
+      class_type_id: parsed.data.classTypeId,
+      trainer_id: parsed.data.trainerId,
+      start_time: new Date(parsed.data.startTime).toISOString(),
+      end_time: new Date(parsed.data.endTime).toISOString(),
+      max_capacity: parsed.data.maxCapacity,
+    }).eq("id", parsed.data.scheduleId).eq("organization_id", gate.profile.organization_id);
+    if (error) return { error: human(error.message) };
+    return { ok: "Clase actualizada." };
+  }
   const seriesId = crypto.randomUUID();
   const start = new Date(parsed.data.startTime);
   const end = new Date(parsed.data.endTime);

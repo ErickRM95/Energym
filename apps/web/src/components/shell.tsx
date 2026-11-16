@@ -25,7 +25,7 @@ const links = [
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const profile = useProfile();
-  if (pathname === "/login" || pathname === "/signup" || pathname.startsWith("/acceso/invitar")) return <>{children}</>;
+  if (pathname === "/login" || pathname === "/signup" || pathname.startsWith("/acceso/invitar") || /^\/i\/[a-z0-9]{8}$/.test(pathname)) return <>{children}</>;
 
   const role = profile.data?.role;
   const visible = links.filter((link) => {
