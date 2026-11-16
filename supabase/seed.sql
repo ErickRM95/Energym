@@ -106,10 +106,7 @@ begin
   for v_user in
     select *
     from (values
-      ('a2222222-2222-4222-8222-222222222222'::uuid, 'admin@energym.local', 'Ada Rivas', 'gym_admin'::public.user_role),
-      ('a3333333-3333-4333-8333-333333333333'::uuid, 'trainer@energym.local', 'Leo Campos', 'trainer'::public.user_role),
-      ('a4444444-4444-4444-8444-444444444444'::uuid, 'socio@energym.local', 'Mia Solís', 'member'::public.user_role),
-      ('a5555555-5555-4555-8555-555555555555'::uuid, 'nuevo@energym.local', 'Ian Cruz', 'member'::public.user_role)
+      ('a2222222-2222-4222-8222-222222222222'::uuid, 'admin@energym.local', 'Erick', 'gym_admin'::public.user_role)
     ) as seed(id, email, full_name, role)
   loop
     insert into auth.users (
@@ -164,37 +161,6 @@ begin
   end loop;
 end $$;
 
-insert into public.member_subscriptions (
-  id, organization_id, member_id, plan_id, start_date, end_date, remaining_credits, status
-)
-values (
-  'f1111111-1111-4111-8111-111111111111',
-  'a1111111-1111-4111-8111-111111111111',
-  'a4444444-4444-4444-8444-444444444444',
-  'b1111111-1111-4111-8111-111111111111',
-  current_date,
-  current_date + 29,
-  0,
-  'active'
-)
-on conflict (id) do nothing;
-
-insert into public.payments (
-  id, organization_id, subscription_id, member_id, original_amount, discount_amount, final_amount, payment_method, paid_at
-)
-values (
-  'f2222222-2222-4222-8222-222222222222',
-  'a1111111-1111-4111-8111-111111111111',
-  'f1111111-1111-4111-8111-111111111111',
-  'a4444444-4444-4444-8444-444444444444',
-  899,
-  0,
-  899,
-  'cash',
-  now()
-)
-on conflict (id) do nothing;
-
 insert into public.class_schedules (
   id, organization_id, class_type_id, trainer_id, start_time, end_time, max_capacity
 )
@@ -202,56 +168,9 @@ values (
   'f6666666-6666-4666-8666-666666666666',
   'a1111111-1111-4111-8111-111111111111',
   'd2222222-2222-4222-8222-222222222222',
-  'a3333333-3333-4333-8333-333333333333',
+  null,
   timezone('America/Mexico_City', ((now() at time zone 'America/Mexico_City')::date + 1) + time '07:00'),
   timezone('America/Mexico_City', ((now() at time zone 'America/Mexico_City')::date + 1) + time '08:00'),
   12
-)
-on conflict (id) do nothing;
-
-insert into public.routines (
-  id, organization_id, member_id, trainer_id, name, goal, generated_by_ai, is_active, start_date
-)
-values (
-  'f3333333-3333-4333-8333-333333333333',
-  'a1111111-1111-4111-8111-111111111111',
-  'a4444444-4444-4444-8444-444444444444',
-  'a3333333-3333-4333-8333-333333333333',
-  'Base de fuerza',
-  'fuerza',
-  false,
-  true,
-  current_date
-)
-on conflict (id) do nothing;
-
-insert into public.routine_days (id, organization_id, routine_id, day_number, name, focus_area)
-values
-  ('f4444444-4444-4444-8444-444444444441', 'a1111111-1111-4111-8111-111111111111', 'f3333333-3333-4333-8333-333333333333', 1, 'Empuje', 'Pecho y hombros'),
-  ('f4444444-4444-4444-8444-444444444442', 'a1111111-1111-4111-8111-111111111111', 'f3333333-3333-4333-8333-333333333333', 2, 'Tracción', 'Espalda')
-on conflict (id) do nothing;
-
-insert into public.routine_exercises (
-  id, organization_id, routine_day_id, exercise_id, order_index, sets, reps, rest_seconds, target_rpe, trainer_notes
-)
-values
-  ('f5555555-5555-4555-8555-555555555551', 'a1111111-1111-4111-8111-111111111111', 'f4444444-4444-4444-8444-444444444441', 'c1111111-1111-4111-8111-111111111103', 0, 4, '6-8', 120, 8, 'Controla la bajada.'),
-  ('f5555555-5555-4555-8555-555555555552', 'a1111111-1111-4111-8111-111111111111', 'f4444444-4444-4444-8444-444444444441', 'c1111111-1111-4111-8111-111111111104', 1, 3, '8-10', 90, 7, null),
-  ('f5555555-5555-4555-8555-555555555553', 'a1111111-1111-4111-8111-111111111111', 'f4444444-4444-4444-8444-444444444442', 'c1111111-1111-4111-8111-111111111105', 0, 4, '8-10', 90, 8, null),
-  ('f5555555-5555-4555-8555-555555555554', 'a1111111-1111-4111-8111-111111111111', 'f4444444-4444-4444-8444-444444444442', 'c1111111-1111-4111-8111-111111111101', 1, 3, '8-12', 90, 7, null)
-on conflict (id) do nothing;
-
-insert into public.body_measurements (
-  id, organization_id, member_id, recorded_by, recorded_at, weight_kg, body_fat_pct, waist_cm
-)
-values (
-  'f7777777-7777-4777-8777-777777777777',
-  'a1111111-1111-4111-8111-111111111111',
-  'a4444444-4444-4444-8444-444444444444',
-  'a3333333-3333-4333-8333-333333333333',
-  now() - interval '14 days',
-  72.4,
-  24.1,
-  78
 )
 on conflict (id) do nothing;

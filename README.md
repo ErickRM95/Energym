@@ -12,9 +12,6 @@ Monorepo del portal administrativo, la app de atletas y la base multi-tenant.
 
 La semilla crea Energym Centro. La contraseña local es `Energym123!`.
 
-- `admin@energym.local`
-- `trainer@energym.local`
-- `socio@energym.local`
-- `nuevo@energym.local` puede usar el código `BIENVENIDA20`
+- `admin@energym.local` (Erick)
 
 Gemini solo se llama desde `supabase/functions/generate-ai-routine`. Configura el secreto con `supabase secrets set GEMINI_API_KEY=...`. Sin esa clave, el estudio de rutinas sigue permitiendo armar el plan a mano.
