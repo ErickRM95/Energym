@@ -508,7 +508,7 @@ export async function savePayment(_state: ActionState, formData: FormData): Prom
   if (gate.profile.role === "trainer") return { error: "Solo un administrador puede registrar pagos." };
   const parsed = paymentSchema.safeParse({
     memberId: text(formData, "memberId"),
-    subscriptionId: text(formData, "subscriptionId"),
+    planId: text(formData, "planId"),
     originalAmount: Number(text(formData, "originalAmount")),
     discountAmount: Number(text(formData, "discountAmount") || 0),
     paymentMethod: text(formData, "paymentMethod"),
@@ -518,21 +518,29 @@ export async function savePayment(_state: ActionState, formData: FormData): Prom
   if (!parsed.success) return { error: issue(parsed.error) };
   if (parsed.data.discountAmount > parsed.data.originalAmount) return { error: "El descuento no puede superar el monto." };
   const paidAt = new Date(parsed.data.paidAt);
-  if (Number.isNaN(paidAt.getTime())) return { error: "La fecha del pago no es válida." };
-  const { data: subscription, error: subscriptionError } = await gate.supabase
-    .from("member_subscriptions")
-    .select("id, member_id, organization_id")
-    .eq("id", parsed.data.subscriptionId)
-    .eq("member_id", parsed.data.memberId)
+  const paidDay = /^(\d{4}-\d{2}-\d{2})/.exec(parsed.data.paidAt)?.[1];
+  if (Number.isNaN(paidAt.getTime()) || !paidDay) return { error: "La fecha del pago no es válida." };
+  const { data: member, error: memberError } = await gate.supabase
+    .from("profiles")
+    .select("id, full_name, role, organization_id")
+    .eq("id", parsed.data.memberId)
     .maybeSingle();
-  if (subscriptionError || !subscription || subscription.organization_id !== gate.profile.organization_id) {
-    return { error: "La suscripción no pertenece a este cliente." };
+  if (memberError || !member || member.role !== "member" || member.organization_id !== gate.profile.organization_id) {
+    return { error: "No se encontró el cliente." };
+  }
+  const { data: plan, error: planError } = await gate.supabase
+    .from("membership_plans")
+    .select("id, organization_id, is_active, duration_days, class_credits")
+    .eq("id", parsed.data.planId)
+    .maybeSingle();
+  if (planError || !plan || !plan.is_active || plan.organization_id !== gate.profile.organization_id) {
+    return { error: "El plan no está disponible." };
   }
   const original = Math.round(parsed.data.originalAmount * 100) / 100;
   const discount = Math.round(parsed.data.discountAmount * 100) / 100;
-  const values = {
+  const amounts = {
     member_id: parsed.data.memberId,
-    subscription_id: parsed.data.subscriptionId,
+    member_name: member.full_name,
     original_amount: original,
     discount_amount: discount,
     final_amount: Math.round((original - discount) * 100) / 100,
@@ -544,23 +552,73 @@ export async function savePayment(_state: ActionState, formData: FormData): Prom
     const admin = createAdminClient();
     const paymentId = text(formData, "paymentId");
     if (paymentId) {
-      const current = await admin.from("payments").select("organization_id").eq("id", paymentId).maybeSingle();
+      const current = await admin.from("payments").select("organization_id, subscription_id").eq("id", paymentId).maybeSingle();
       if (current.error || !current.data || current.data.organization_id !== gate.profile.organization_id) {
         return { error: "No se encontró el pago." };
       }
-      const { error } = await admin.from("payments").update(values).eq("id", paymentId);
+      let subscriptionId = current.data.subscription_id;
+      if (subscriptionId) {
+        const moved = await admin.from("member_subscriptions").update({ plan_id: plan.id }).eq("id", subscriptionId);
+        if (moved.error) return { error: moved.error.message };
+      } else {
+        const linked = await subscriptionForPayment(admin, gate.profile.organization_id, member.id, plan, paidDay);
+        if ("error" in linked) return { error: linked.error };
+        subscriptionId = linked.id;
+      }
+      const { error } = await admin.from("payments").update({ ...amounts, subscription_id: subscriptionId }).eq("id", paymentId);
       if (error) return { error: human(error.message) };
       return { ok: "Pago actualizado." };
     }
+    const linked = await subscriptionForPayment(admin, gate.profile.organization_id, member.id, plan, paidDay);
+    if ("error" in linked) return { error: linked.error };
     const { error } = await admin.from("payments").insert({
       organization_id: gate.profile.organization_id,
-      ...values,
+      subscription_id: linked.id,
+      ...amounts,
     });
     if (error) return { error: human(error.message) };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "No se pudo guardar el pago." };
   }
   return { ok: "Pago registrado." };
+}
+
+function addDays(isoDay: string, days: number) {
+  const date = new Date(`${isoDay}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function subscriptionForPayment(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  memberId: string,
+  plan: { id: string; duration_days: number; class_credits: number },
+  paidDay: string,
+) {
+  const current = await admin
+    .from("member_subscriptions")
+    .select("id")
+    .eq("member_id", memberId)
+    .eq("plan_id", plan.id)
+    .eq("status", "active")
+    .gte("end_date", paidDay)
+    .order("end_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (current.error) return { error: current.error.message };
+  if (current.data) return { id: current.data.id };
+  const created = await admin.from("member_subscriptions").insert({
+    organization_id: organizationId,
+    member_id: memberId,
+    plan_id: plan.id,
+    start_date: paidDay,
+    end_date: addDays(paidDay, plan.duration_days - 1),
+    remaining_credits: plan.class_credits,
+    status: "active" as const,
+  }).select("id").single();
+  if (created.error || !created.data) return { error: created.error?.message ?? "No se pudo activar el plan." };
+  return { id: created.data.id };
 }
 
 export async function savePromotion(_state: ActionState, formData: FormData): Promise<ActionState> {

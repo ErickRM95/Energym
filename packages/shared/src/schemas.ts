@@ -172,7 +172,7 @@ export const measurementSchema = z.object({
 
 export const paymentSchema = z.object({
   memberId: z.uuid({ error: "Elige un cliente." }),
-  subscriptionId: z.uuid({ error: "Elige una suscripción." }),
+  planId: z.uuid({ error: "Elige un plan." }),
   originalAmount: z.number().min(0, { error: "El monto no puede ser negativo." }),
   discountAmount: z.number().min(0, { error: "El descuento no puede ser negativo." }),
   paymentMethod: z.enum(["cash", "card", "sinpe", "transfer"], { error: "Elige un tipo de pago." }),

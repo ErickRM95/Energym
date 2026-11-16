@@ -1,11 +1,11 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { savePayment, type ActionState } from "@/app/actions";
 import { FormNote } from "@/components/form-note";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
-import { day, money, when } from "@/lib/format";
+import { money, when } from "@/lib/format";
 import { createClient } from "@/lib/supabase/browser";
 
 const methods = [
@@ -18,7 +18,7 @@ const methods = [
 const methodLabel = Object.fromEntries(methods) as Record<string, string>;
 
 type ClientOption = { id: string; full_name: string };
-type SubscriptionOption = { id: string; member_id: string; plan_id: string; status: string; start_date: string; end_date: string };
+type PlanOption = { id: string; name: string; price: number };
 type PaymentRow = {
   id: string;
   member_id: string | null;
@@ -41,17 +41,20 @@ function localInput(value: string | null) {
 function PaymentFields({
   payment,
   clients,
-  subscriptions,
-  planNames,
+  plans,
+  initialPlanId = "",
 }: {
   payment?: PaymentRow;
   clients: ClientOption[];
-  subscriptions: SubscriptionOption[];
-  planNames: Map<string, string>;
+  plans: PlanOption[];
+  initialPlanId?: string;
 }) {
   const [memberId, setMemberId] = useState(payment?.member_id ?? "");
-  const options = subscriptions.filter((subscription) => subscription.member_id === memberId);
-  const subscriptionId = options.some((subscription) => subscription.id === payment?.subscription_id) ? payment?.subscription_id : options[0]?.id;
+  const [planId, setPlanId] = useState(initialPlanId);
+  const [amount, setAmount] = useState(payment ? String(payment.original_amount) : "");
+  useEffect(() => {
+    if (!planId && initialPlanId) setPlanId(initialPlanId);
+  }, [initialPlanId, planId]);
   return (
     <>
       {payment ? <input name="paymentId" type="hidden" value={payment.id} /> : null}
@@ -63,17 +66,27 @@ function PaymentFields({
           ))}
         </Select>
       </Field>
-      <Field label="Suscripción *">
-        <Select key={memberId} name="subscriptionId" required defaultValue={subscriptionId ?? ""}>
+      <Field label="Plan *">
+        <Select
+          name="planId"
+          required
+          value={planId}
+          onChange={(event) => {
+            const next = event.target.value;
+            setPlanId(next);
+            if (!payment) {
+              const plan = plans.find((item) => item.id === next);
+              if (plan) setAmount(String(plan.price));
+            }
+          }}
+        >
           <option value="" disabled>Seleccionar</option>
-          {options.map((subscription) => (
-            <option key={subscription.id} value={subscription.id}>
-              {planNames.get(subscription.plan_id) ?? "Plan"} · {subscription.status} · {day(subscription.start_date)} a {day(subscription.end_date)}
-            </option>
+          {plans.map((plan) => (
+            <option key={plan.id} value={plan.id}>{plan.name} · {money(plan.price)}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Monto *"><Input name="originalAmount" type="number" min="0" step="0.01" defaultValue={payment?.original_amount} required /></Field>
+      <Field label="Monto *"><Input name="originalAmount" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field>
       <Field label="Descuento"><Input name="discountAmount" type="number" min="0" step="0.01" defaultValue={payment?.discount_amount ?? 0} /></Field>
       <Field label="Método *">
         <Select name="paymentMethod" required defaultValue={payment?.payment_method ?? ""}>
@@ -92,15 +105,23 @@ function PaymentFields({
 export default function PaymentsPage() {
   const [state, action, pending] = useActionState<ActionState, FormData>(savePayment, {});
   const [editState, editAction, editPending] = useActionState<ActionState, FormData>(savePayment, {});
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   useEffect(() => {
-    if (state.ok) setOpen(false);
-    else if (state.error) setOpen(true);
-  }, [state]);
+    if (state.ok) {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["payments"] });
+      void queryClient.invalidateQueries({ queryKey: ["payment-subscriptions"] });
+    } else if (state.error) setOpen(true);
+  }, [state, queryClient]);
   useEffect(() => {
-    if (editState.ok) setEditingId(null);
-  }, [editState]);
+    if (editState.ok) {
+      setEditingId(null);
+      void queryClient.invalidateQueries({ queryKey: ["payments"] });
+      void queryClient.invalidateQueries({ queryKey: ["payment-subscriptions"] });
+    }
+  }, [editState, queryClient]);
   const payments = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -134,13 +155,13 @@ export default function PaymentsPage() {
   const plans = useQuery({
     queryKey: ["payment-plans"],
     queryFn: async () => {
-      const { data, error } = await createClient().from("membership_plans").select("id, name");
+      const { data, error } = await createClient().from("membership_plans").select("id, name, price").eq("is_active", true).order("name");
       if (error) throw error;
       return data;
     },
   });
   const names = new Map((clients.data ?? []).map((client) => [client.id, client.full_name]));
-  const planNames = new Map((plans.data ?? []).map((plan) => [plan.id, plan.name]));
+  const planBySubscription = new Map((subscriptions.data ?? []).map((subscription) => [subscription.id, subscription.plan_id]));
   return (
     <section className="mx-auto flex max-w-6xl flex-col gap-6">
       <div>
@@ -158,7 +179,7 @@ export default function PaymentsPage() {
           {!open && (state.ok || state.error) ? <div className="mt-3"><FormNote state={state} /></div> : null}
           {open ? (
             <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2">
-              <PaymentFields clients={clients.data ?? []} subscriptions={subscriptions.data ?? []} planNames={planNames} />
+              <PaymentFields clients={clients.data ?? []} plans={plans.data ?? []} />
               <div className="sm:col-span-2">
                 <FormNote state={state} />
                 <Button className="mt-3" disabled={pending} type="submit">{pending ? "Guardando…" : "Registrar pago"}</Button>
@@ -204,7 +225,7 @@ export default function PaymentsPage() {
                     <tr className="border-t border-border bg-muted/50">
                       <td className="px-4 py-4" colSpan={7}>
                         <form key={payment.id} action={editAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <PaymentFields payment={payment} clients={clients.data ?? []} subscriptions={subscriptions.data ?? []} planNames={planNames} />
+                          <PaymentFields payment={payment} clients={clients.data ?? []} plans={plans.data ?? []} initialPlanId={payment.subscription_id ? planBySubscription.get(payment.subscription_id) : ""} />
                           <div className="sm:col-span-2 lg:col-span-3">
                             <FormNote state={editState} />
                             <Button className="mt-3" disabled={editPending} type="submit">{editPending ? "Guardando…" : "Guardar cambios"}</Button>
