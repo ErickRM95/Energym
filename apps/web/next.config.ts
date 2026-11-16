@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   transpilePackages: ["@energym/shared"],
   partialPrefetching: true,
+  async rewrites() {
+    return {
+      fallback: [
+        { source: "/movil", destination: "/movil/index.html" },
+        { source: "/movil/:path*", destination: "/movil/index.html" },
+      ],
+    };
+  },
   turbopack: {
     root: path.resolve(appDir, "../.."),
     rules: {

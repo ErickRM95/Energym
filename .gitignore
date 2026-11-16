@@ -3,6 +3,7 @@ node_modules
 .next
 .expo
 dist
+apps/web/public/movil
 .supabase
 supabase/.temp
 .env

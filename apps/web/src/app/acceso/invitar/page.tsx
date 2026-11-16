@@ -7,10 +7,16 @@ function loginQuery(correo: string, clave: string) {
   return new URLSearchParams({ correo, clave }).toString();
 }
 
+function localHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".local") || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname);
+}
+
 function mobileWebLogin(correo: string, clave: string) {
+  const query = loginQuery(correo, clave);
   const configured = process.env.NEXT_PUBLIC_MOBILE_URL?.replace(/\/$/, "");
-  const origin = configured || `${window.location.protocol}//${window.location.hostname}:8081`;
-  return `${origin}/login?${loginQuery(correo, clave)}`;
+  if (configured) return `${configured}/login?${query}`;
+  if (localHost(window.location.hostname)) return `${window.location.protocol}//${window.location.hostname}:8081/login?${query}`;
+  return `${window.location.origin}/movil/login?${query}`;
 }
 
 export default function InvitePage() {
