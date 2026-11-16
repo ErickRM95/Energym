@@ -47,7 +47,7 @@ export function MemberDetail({ id }: { id: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-4xl font-semibold">{profile.full_name}</h1>
           {canDelete ? (
-            <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? También se borra su acceso a la app.")) event.preventDefault(); }}>
+            <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? Se borra su acceso a la app. Los pagos se conservan.")) event.preventDefault(); }}>
               <input name="memberId" type="hidden" value={profile.id} />
               <Button variant="danger" disabled={deletePending} type="submit">{deletePending ? "Eliminando…" : "Eliminar cliente"}</Button>
             </form>

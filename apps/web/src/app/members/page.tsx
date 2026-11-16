@@ -206,7 +206,7 @@ export default function MembersPage() {
                           {editingId === member.id ? "Cerrar" : "Editar"}
                         </Button>
                         {canDelete ? (
-                          <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? También se borra su acceso a la app.")) event.preventDefault(); }}>
+                          <form action={deleteAction} onSubmit={(event) => { if (!window.confirm("¿Eliminar este cliente? Se borra su acceso a la app. Los pagos se conservan.")) event.preventDefault(); }}>
                             <input name="memberId" type="hidden" value={member.id} />
                             <Button variant="danger" disabled={deletePending} type="submit">Eliminar</Button>
                           </form>

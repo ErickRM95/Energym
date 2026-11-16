@@ -107,8 +107,9 @@ export type Database = {
       payments: Table<{
         id: string;
         organization_id: string;
-        subscription_id: string;
-        member_id: string;
+        subscription_id: string | null;
+        member_id: string | null;
+        member_name: string | null;
         original_amount: number;
         discount_amount: number;
         final_amount: number;

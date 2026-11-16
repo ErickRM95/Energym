@@ -21,8 +21,9 @@ type ClientOption = { id: string; full_name: string };
 type SubscriptionOption = { id: string; member_id: string; plan_id: string; status: string; start_date: string; end_date: string };
 type PaymentRow = {
   id: string;
-  member_id: string;
-  subscription_id: string;
+  member_id: string | null;
+  member_name: string | null;
+  subscription_id: string | null;
   original_amount: number;
   discount_amount: number;
   final_amount: number;
@@ -105,7 +106,7 @@ export default function PaymentsPage() {
     queryFn: async () => {
       const { data, error } = await createClient()
         .from("payments")
-        .select("id, member_id, subscription_id, final_amount, discount_amount, original_amount, payment_method, reference_number, paid_at")
+        .select("id, member_id, member_name, subscription_id, final_amount, discount_amount, original_amount, payment_method, reference_number, paid_at")
         .order("paid_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -188,7 +189,7 @@ export default function PaymentsPage() {
                 <Fragment key={payment.id}>
                   <tr className="border-t border-border">
                     <td className="px-4 py-3">{when(payment.paid_at)}</td>
-                    <td className="px-4 py-3">{names.get(payment.member_id) ?? "Cliente"}</td>
+                    <td className="px-4 py-3">{(payment.member_id ? names.get(payment.member_id) : undefined) ?? payment.member_name ?? "Cliente"}</td>
                     <td className="px-4 py-3">{money(payment.original_amount)}</td>
                     <td className="px-4 py-3">{money(payment.discount_amount)}</td>
                     <td className="px-4 py-3 font-mono">{money(payment.final_amount)}</td>

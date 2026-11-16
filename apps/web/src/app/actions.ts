@@ -404,19 +404,12 @@ export async function deleteMember(_state: ActionState, formData: FormData): Pro
   if (gate.profile.role === "trainer") return { error: "Solo un administrador puede eliminar clientes." };
   const memberId = text(formData, "memberId");
   if (!memberId || memberId === gate.profile.id) return { error: "No se puede eliminar esta cuenta." };
-  const { data: member, error } = await gate.supabase.from("profiles").select("id, role, organization_id").eq("id", memberId).single();
+  const { data: member, error } = await gate.supabase.from("profiles").select("id, full_name, role, organization_id").eq("id", memberId).single();
   if (error || !member || member.role !== "member" || member.organization_id !== gate.profile.organization_id) return { error: "No se encontró el cliente." };
   try {
     const admin = createAdminClient();
-    const subscriptions = await admin.from("member_subscriptions").select("id").eq("member_id", memberId);
-    if (subscriptions.error) return { error: subscriptions.error.message };
-    const subscriptionIds = (subscriptions.data ?? []).map((row) => row.id);
-    if (subscriptionIds.length > 0) {
-      const byPlan = await admin.from("payments").delete().in("subscription_id", subscriptionIds);
-      if (byPlan.error) return { error: byPlan.error.message };
-    }
-    const payments = await admin.from("payments").delete().eq("member_id", memberId);
-    if (payments.error) return { error: payments.error.message };
+    const named = await admin.from("payments").update({ member_name: member.full_name }).eq("member_id", memberId);
+    if (named.error) return { error: named.error.message };
     const redemptions = await admin.from("promotion_redemptions").delete().eq("member_id", memberId);
     if (redemptions.error) return { error: redemptions.error.message };
     const removedPlans = await admin.from("member_subscriptions").delete().eq("member_id", memberId);

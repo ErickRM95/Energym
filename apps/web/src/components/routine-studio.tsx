@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { RoutineDraft } from "@energym/shared";
 import { saveRoutine } from "@/app/actions";
 import { Button, Card, Field, Input, Select, TextArea } from "@/components/ui";
+import { catalogRoutine } from "@/lib/catalog-routine";
 import { createClient } from "@/lib/supabase/browser";
 
 async function geminiFailure(error: unknown) {
@@ -18,7 +19,29 @@ async function geminiFailure(error: unknown) {
   if (status === 404 || detail.includes("NOT_FOUND")) {
     return "El modelo de Gemini ya no está disponible para esta clave. Volvé a publicar la función.";
   }
+  if (status === 408 || status === 503 || status === 429 || detail.includes("high demand") || detail.includes("UNAVAILABLE") || detail.includes("Timeout")) {
+    return "Gemini está saturado en este momento. Espera un momento y vuelve a generar.";
+  }
   return "Gemini no respondió. Puedes armar la rutina a mano.";
+}
+
+function asDraft(draft: RoutineDraft): RoutineDraft {
+  return {
+    ...draft,
+    days: draft.days.map((day) => ({
+      ...day,
+      focus_area: day.focus_area || "General",
+      exercises: day.exercises.map((exercise) => ({
+        ...exercise,
+        reps: String(exercise.reps),
+        sets: Number(exercise.sets) || 1,
+        rest_seconds: Number(exercise.rest_seconds) || 0,
+        order_index: Number(exercise.order_index) || 0,
+        target_rpe: exercise.target_rpe == null ? null : Number(exercise.target_rpe),
+        trainer_notes: exercise.trainer_notes ?? null,
+      })),
+    })),
+  };
 }
 
 const emptyDraft = (): RoutineDraft => ({
@@ -46,7 +69,7 @@ export function RoutineStudio({ onSaved, routineId }: { onSaved?: () => void; ro
       const supabase = createClient();
       const [members, exercises] = await Promise.all([
         supabase.from("profiles").select("id, full_name").eq("role", "member").order("full_name"),
-        supabase.from("exercises_library").select("id, name").order("name"),
+        supabase.from("exercises_library").select("id, name, muscle_group, difficulty").order("name"),
       ]);
       return { members: members.data ?? [], exercises: exercises.data ?? [] };
     },
@@ -134,13 +157,22 @@ export function RoutineStudio({ onSaved, routineId }: { onSaved?: () => void; ro
     });
     setPending(false);
     if (error || !data?.draft) {
+      const fallback = catalogRoutine(exercises, { goal, daysPerWeek, experience, sessionMinutes, injuries });
+      if (!fallback) {
+        setGeneratedByAi(false);
+        setMessage(await geminiFailure(error));
+        return;
+      }
+      setDraft(asDraft(fallback));
       setGeneratedByAi(false);
-      setMessage(await geminiFailure(error));
+      setMessage("Gemini está saturado. Armé la rutina con el catálogo para que la revises antes de guardarla.");
       return;
     }
-    setDraft(data.draft as RoutineDraft);
-    setGeneratedByAi(true);
-    setMessage("Borrador listo. Revísalo antes de guardarlo.");
+    setDraft(asDraft(data.draft as RoutineDraft));
+    setGeneratedByAi(data.source !== "catalog");
+    setMessage(data.source === "catalog"
+      ? "Gemini está saturado. Armé la rutina con el catálogo para que la revises antes de guardarla."
+      : "Borrador listo. Revísalo antes de guardarlo.");
   }
 
   async function persist() {
@@ -150,7 +182,7 @@ export function RoutineStudio({ onSaved, routineId }: { onSaved?: () => void; ro
     }
     const formData = new FormData();
     formData.set("payload", JSON.stringify({
-      ...draft,
+      ...asDraft(draft),
       goal,
       memberId,
       routineId,

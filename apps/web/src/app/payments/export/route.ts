@@ -8,12 +8,12 @@ export async function GET() {
   if (!user) return new Response("Unauthorized", { status: 401 });
   const { data, error } = await supabase
     .from("payments")
-    .select("paid_at, original_amount, discount_amount, final_amount, payment_method, reference_number, member_id")
+    .select("paid_at, original_amount, discount_amount, final_amount, payment_method, reference_number, member_id, member_name")
     .order("paid_at", { ascending: false });
   if (error) return new Response(error.message, { status: 400 });
-  const header = "paid_at,member_id,original_amount,discount_amount,final_amount,payment_method,reference_number";
+  const header = "paid_at,member_id,member_name,original_amount,discount_amount,final_amount,payment_method,reference_number";
   const lines = (data ?? []).map((row) =>
-    [row.paid_at, row.member_id, row.original_amount, row.discount_amount, row.final_amount, row.payment_method, row.reference_number ?? ""].join(","),
+    [row.paid_at, row.member_id ?? "", row.member_name ?? "", row.original_amount, row.discount_amount, row.final_amount, row.payment_method, row.reference_number ?? ""].join(","),
   );
   return new Response([header, ...lines].join("\n"), {
     headers: {

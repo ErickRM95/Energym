@@ -50,13 +50,11 @@ Deno.serve(async (request) => {
     "Adapta la rutina al peso, tamaño, lesiones, enfermedades y demás notas de la ficha. Evita ejercicios que choquen con esas limitaciones.",
     `Catálogo: ${JSON.stringify(catalog)}.`,
   ].join("\n");
-  let response = await askGemini(apiKey, prompt, "gemini-3.5-flash-lite");
-  if (response.status === 404) response = await askGemini(apiKey, prompt, "gemini-3.8-flash");
-  if (!response.ok) {
-    const raw = await response.text();
-    const detail = raw.replace(/key=[^&\s"]+/gi, "key=redacted").slice(0, 500);
-    return json({ error: "Gemini request failed", status: response.status, detail }, 502);
+  const attempt = await askModels(apiKey, prompt);
+  if (!attempt.response) {
+    return json({ draft: catalogDraft(catalog, body), source: "catalog" });
   }
+  const response = attempt.response;
 
   const payload = await response.json();
   const parts = payload?.candidates?.[0]?.content?.parts ?? [];
@@ -65,7 +63,12 @@ Deno.serve(async (request) => {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end < start) return json({ error: "Gemini returned an empty draft" }, 502);
-  const draft = JSON.parse(text.slice(start, end + 1)) as { days?: Array<{ exercises?: Array<{ exercise_id: string; sets: number; rest_seconds: number }> }> };
+  let draft: { days?: Array<{ exercises?: Array<{ exercise_id: string; sets: number; rest_seconds: number }> }> };
+  try {
+    draft = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return json({ error: "Gemini returned an empty draft" }, 502);
+  }
   const allowedIds = new Set(catalog.map((exercise) => exercise.id));
   for (const day of draft.days ?? []) {
     for (const exercise of day.exercises ?? []) {
@@ -77,15 +80,142 @@ Deno.serve(async (request) => {
   return json({ draft });
 });
 
+const geminiModels = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
+
+async function askModels(apiKey: string, prompt: string) {
+  let status = 502;
+  let detail = "";
+  const attempts: Array<{ model: string; status: number }> = [];
+  for (const model of geminiModels) {
+    try {
+      const response = await askGemini(apiKey, prompt, model);
+      if (response.ok) return { response, status: response.status, detail: "", attempts };
+      status = response.status;
+      attempts.push({ model, status });
+      detail = (await response.text()).replace(/key=[^&\s"]+/gi, "key=redacted").slice(0, 300);
+      if (status === 401 || status === 403) break;
+    } catch (error) {
+      status = 408;
+      attempts.push({ model, status });
+      detail = error instanceof Error ? error.name : "timeout";
+    }
+  }
+  return { status, detail, attempts };
+}
+
 function askGemini(apiKey: string, prompt: string, model: string) {
   return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    signal: AbortSignal.timeout(22_000),
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: "application/json" },
     }),
   });
+}
+
+function catalogDraft(catalog: ExerciseRow[], body: { goal?: string; daysPerWeek?: number; experience?: string; sessionMinutes?: number; injuries?: string }) {
+  const goal = String(body.goal ?? "fuerza");
+  const experience = String(body.experience ?? "beginner");
+  const notes = String(body.injuries ?? "").toLowerCase();
+  const dayCount = Math.min(7, Math.max(1, Number(body.daysPerWeek) || 3));
+  const exerciseCount = Math.min(6, Math.max(4, Math.round((Number(body.sessionMinutes) || 60) / 12)));
+  const maxRank = experience === "advanced" ? 2 : experience === "intermediate" ? 1 : 0;
+  const sequences = [
+    ["full"],
+    ["upper", "lower"],
+    ["push", "pull", "legs"],
+    ["upper", "lower", "upper", "lower"],
+    ["push", "pull", "legs", "upper", "lower"],
+    ["push", "pull", "legs", "push", "pull", "legs"],
+    ["push", "pull", "legs", "upper", "lower", "full", "core"],
+  ];
+  const muscles: Record<string, string[]> = {
+    push: ["Pecho", "Hombros", "Brazos"],
+    pull: ["Espalda", "Brazos", "Posteriores"],
+    legs: ["Piernas", "Glúteos", "Posteriores", "Core"],
+    upper: ["Pecho", "Espalda", "Hombros", "Brazos"],
+    lower: ["Piernas", "Glúteos", "Posteriores", "Core"],
+    full: ["Piernas", "Pecho", "Espalda", "Core", "Hombros"],
+    core: ["Core", "Glúteos", "Cardio"],
+  };
+  const titles: Record<string, [string, string]> = {
+    push: ["Empuje", "Pecho y hombros"],
+    pull: ["Tirón", "Espalda"],
+    legs: ["Piernas", "Tren inferior"],
+    upper: ["Tren superior", "Pecho y espalda"],
+    lower: ["Tren inferior", "Piernas y glúteos"],
+    full: ["Cuerpo completo", "Cuerpo completo"],
+    core: ["Core", "Abdomen y estabilidad"],
+  };
+  const prescription = {
+    hipertrofia: { sets: 3, reps: "8-12", rest: 90, rpe: 7 },
+    fuerza: { sets: 4, reps: "4-6", rest: 150, rpe: 8 },
+    perdida_de_grasa: { sets: 3, reps: "12-15", rest: 45, rpe: 7 },
+    resistencia: { sets: 2, reps: "15-20", rest: 30, rpe: 6 },
+  }[goal] ?? { sets: 3, reps: "8-12", rest: 90, rpe: 7 };
+  const sets = experience === "beginner" ? Math.max(2, prescription.sets - 1) : prescription.sets;
+  const goalName = { hipertrofia: "Hipertrofia", perdida_de_grasa: "Pérdida de grasa", fuerza: "Fuerza", resistencia: "Resistencia" }[goal] ?? "Fuerza";
+  const used = new Set<string>();
+
+  function allowed(exercise: ExerciseRow) {
+    const rank = exercise.difficulty === "advanced" ? 2 : exercise.difficulty === "intermediate" ? 1 : 0;
+    return rank <= maxRank;
+  }
+
+  function blocked(exercise: ExerciseRow) {
+    const name = exercise.name.toLowerCase();
+    const rules: Array<[string, string[]]> = [
+      ["rodilla", ["sentadilla", "zancada", "prensa"]],
+      ["hombro", ["militar", "fondos"]],
+      ["lumbar", ["peso muerto"]],
+      ["muneca", ["press de banca", "militar"]],
+      ["muñeca", ["press de banca", "militar"]],
+    ];
+    return rules.some(([word, names]) => notes.includes(word) && names.some((piece) => name.includes(piece)));
+  }
+
+  function pick(focus: string[]) {
+    const preferred = catalog.filter((exercise) => !used.has(exercise.id) && !blocked(exercise) && allowed(exercise));
+    const pool = preferred.length > 0 ? preferred : catalog.filter((exercise) => !used.has(exercise.id) && !blocked(exercise));
+    const source = pool.length > 0 ? pool : catalog;
+    const picked: ExerciseRow[] = [];
+    for (const muscle of focus) {
+      const match = source.find((exercise) => exercise.muscle_group === muscle && !picked.includes(exercise));
+      if (match) picked.push(match);
+      if (picked.length >= exerciseCount) break;
+    }
+    for (const exercise of source) {
+      if (picked.length >= exerciseCount) break;
+      if (!picked.includes(exercise)) picked.push(exercise);
+    }
+    for (const exercise of picked) used.add(exercise.id);
+    if (used.size >= catalog.length) used.clear();
+    return picked;
+  }
+
+  return {
+    name: `Rutina de ${goalName}`,
+    goal,
+    days: sequences[dayCount - 1].map((split, index) => {
+      const [name, focus] = titles[split];
+      return {
+        day_number: index + 1,
+        name: `Día ${index + 1} · ${name}`,
+        focus_area: focus,
+        exercises: pick(muscles[split]).map((exercise, order) => ({
+          exercise_id: exercise.id,
+          order_index: order,
+          sets,
+          reps: prescription.reps,
+          rest_seconds: prescription.rest,
+          target_rpe: prescription.rpe,
+          trainer_notes: null,
+        })),
+      };
+    }),
+  };
 }
 
 function json(body: unknown, status = 200) {
