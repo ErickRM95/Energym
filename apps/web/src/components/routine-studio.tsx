@@ -80,7 +80,7 @@ export function RoutineStudio({ onSaved, routineId }: { onSaved?: () => void; ro
         days: (days.data ?? []).map((day) => ({
           day_number: day.day_number,
           name: day.name,
-          focus_area: day.focus_area,
+          focus_area: day.focus_area ?? "General",
           exercises: (exercisesForDays.data ?? []).filter((exercise) => exercise.routine_day_id === day.id).map((exercise) => ({
             exercise_id: exercise.exercise_id,
             order_index: exercise.order_index,
