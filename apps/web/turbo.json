@@ -2,7 +2,26 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "inputs": ["$TURBO_DEFAULT$", "../mobile/**", "../../turbo.json"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../mobile/app/**",
+        "../mobile/components/**",
+        "../mobile/constants/**",
+        "../mobile/lib/**",
+        "../mobile/public/**",
+        "../mobile/assets/**",
+        "../mobile/scripts/**",
+        "../mobile/app.json",
+        "../mobile/app.config.js",
+        "../mobile/package.json",
+        "../mobile/babel.config.js",
+        "../mobile/metro.config.js",
+        "../mobile/tailwind.config.js",
+        "../mobile/global.css",
+        "../mobile/tsconfig.json",
+        "../mobile/nativewind-env.d.ts",
+        "../../turbo.json"
+      ]
     }
   }
 }
