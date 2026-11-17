@@ -255,6 +255,29 @@ export type Database = {
         angle: "front" | "side" | "back";
         taken_at: string;
       }>;
+      athlete_goals: Table<{
+        id: string;
+        organization_id: string;
+        member_id: string;
+        label: string;
+        unit: string;
+        start_value: number;
+        current_value: number;
+        target_value: number;
+        created_at: string;
+        updated_at: string;
+      }>;
+      personal_records: Table<{
+        id: string;
+        organization_id: string;
+        member_id: string;
+        exercise_name: string;
+        value: number;
+        unit: string;
+        reps: number | null;
+        achieved_on: string;
+        created_at: string;
+      }>;
       push_tokens: Table<{
         id: string;
         organization_id: string;
