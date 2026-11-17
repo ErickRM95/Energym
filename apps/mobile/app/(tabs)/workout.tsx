@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { FloatingTimer } from "@/components/floating-timer";
 import { cacheKeys, supabase } from "@/lib/supabase";
 import { useTheme } from "@/lib/theme";
 
@@ -161,7 +162,8 @@ export default function WorkoutScreen() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-[#f3f4ef] dark:bg-[#101410]" contentContainerClassName="gap-4 px-5 py-6">
+    <View className="flex-1">
+    <ScrollView className="flex-1 bg-[#f3f4ef] dark:bg-[#101410]" contentContainerClassName="gap-4 px-5 pb-28 pt-6">
       <Text className="text-3xl font-semibold text-[#161915] dark:text-white">{current?.name ?? (routine.isPending ? "Cargando rutina…" : "Todavía no tienes una rutina")}</Text>
       {days.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
@@ -239,5 +241,7 @@ export default function WorkoutScreen() {
         );
       })}
     </ScrollView>
+    <FloatingTimer />
+    </View>
   );
 }

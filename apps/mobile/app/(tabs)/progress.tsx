@@ -70,7 +70,7 @@ export default function ProgressScreen() {
   const [recordReps, setRecordReps] = useState("");
   const [updates, setUpdates] = useState<Record<string, string>>({});
   const progress = useQuery({
-    queryKey: ["progress"],
+    queryKey: ["athlete-progress"],
     queryFn: async () => {
       const { data: auth } = await supabase.auth.getUser();
       const userId = auth.user?.id ?? "";
@@ -117,12 +117,12 @@ export default function ProgressScreen() {
   const weights = (data?.measures ?? []).map((row) => Number(row.weight_kg)).filter((value) => value > 0);
   const firstWeight = weights[0];
   const lastWeight = weights[weights.length - 1];
-  const startPhoto = data ? latest(data.photos, "start") : undefined;
-  const finalPhoto = data ? latest(data.photos, "final") : undefined;
+  const startPhoto = data ? latest(data.photos ?? [], "start") : undefined;
+  const finalPhoto = data ? latest(data.photos ?? [], "final") : undefined;
   const completed = (data?.goals ?? []).filter((goal) => progressRatio(Number(goal.start_value), Number(goal.current_value), Number(goal.target_value)) >= 1).length;
 
   async function refresh() {
-    await client.invalidateQueries({ queryKey: ["progress"] });
+    await client.invalidateQueries({ queryKey: ["athlete-progress"] });
   }
 
   async function saveGoal() {
@@ -243,7 +243,7 @@ export default function ProgressScreen() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-[#f3f4ef] dark:bg-[#101410]" contentContainerClassName="gap-4 px-5 pb-28 pt-6">
+    <ScrollView className="flex-1 bg-[#f3f4ef] dark:bg-[#101410]" contentContainerClassName="gap-4 px-5 py-6">
       <Text className="text-3xl font-semibold text-[#161915] dark:text-white">Tu progreso</Text>
       <Text className="text-[#5c655b] dark:text-[#c9d2c8]">
         {completed > 0 ? `Llevas ${completed} ${completed === 1 ? "meta cumplida" : "metas cumplidas"}.` : "Una foto, una meta y un récord. El cambio se ve."}
@@ -316,7 +316,7 @@ export default function ProgressScreen() {
             </Pressable>
           </View>
         ) : null}
-        {(data?.goals.length ?? 0) === 0 && !goalOpen ? <Text className="text-[#5c655b] dark:text-[#c9d2c8]">Todavía no tienes metas. Prueba con un peso, una medida o un porcentaje.</Text> : null}
+        {(data?.goals?.length ?? 0) === 0 && !goalOpen ? <Text className="text-[#5c655b] dark:text-[#c9d2c8]">Todavía no tienes metas. Prueba con un peso, una medida o un porcentaje.</Text> : null}
         {(data?.goals ?? []).map((goal) => {
           const ratio = progressRatio(Number(goal.start_value), Number(goal.current_value), Number(goal.target_value));
           const done = ratio >= 1;
@@ -376,7 +376,7 @@ export default function ProgressScreen() {
             </Pressable>
           </View>
         ) : null}
-        {(data?.records.length ?? 0) === 0 && !recordOpen ? <Text className="text-[#5c655b] dark:text-[#c9d2c8]">Anota tu mejor marca. Puede ser una sentadilla, un peso muerto o las dominadas.</Text> : null}
+        {(data?.records?.length ?? 0) === 0 && !recordOpen ? <Text className="text-[#5c655b] dark:text-[#c9d2c8]">Anota tu mejor marca. Puede ser una sentadilla, un peso muerto o las dominadas.</Text> : null}
         {(data?.records ?? []).map((record) => (
           <View key={record.id} className="flex-row items-center justify-between rounded-3xl bg-[#fffcf6] dark:bg-[#1c241c] p-4">
             <View>
@@ -391,7 +391,7 @@ export default function ProgressScreen() {
             </View>
           </View>
         ))}
-        {(data?.lifted.length ?? 0) > 0 ? <Text className="mt-2 text-sm font-semibold text-[#161915] dark:text-white">Mejores pesos de tus series</Text> : null}
+        {(data?.lifted?.length ?? 0) > 0 ? <Text className="mt-2 text-sm font-semibold text-[#161915] dark:text-white">Mejores pesos de tus series</Text> : null}
         {(data?.lifted ?? []).map(([name, weight]) => (
           <Text key={name} className="text-[#5c655b] dark:text-[#c9d2c8]">{name} · {amount(weight)} kg</Text>
         ))}

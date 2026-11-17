@@ -15,10 +15,23 @@ function clock(total: number) {
 }
 
 function presetLabel(total: number) {
-  if (total < 60) return `${total}s`;
+  if (total < 60) return `${total} segundos`;
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
-  return seconds === 0 ? `${minutes} min` : `${minutes}:${String(seconds).padStart(2, "0")}`;
+  if (seconds === 0) return minutes === 1 ? "1 minuto" : `${minutes} minutos`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function chipText(total: number, tone: string) {
+  if (total > 0 && total < 60) {
+    return (
+      <Text className={tone}>
+        {total}
+        <Text className={tone}>s</Text>
+      </Text>
+    );
+  }
+  return <Text className={tone}>{presetLabel(total)}</Text>;
 }
 
 export function FloatingTimer() {
@@ -51,12 +64,12 @@ export function FloatingTimer() {
     if (remaining === 0) {
       armed.current = false;
       setRunning(false);
-      void playBeeps(endBeepsRef.current, 990);
+      void playBeeps(endBeepsRef.current, 587);
       return;
     }
     if (beepEvery > 0 && remaining % beepEvery === 0 && lastBeep.current !== remaining) {
       lastBeep.current = remaining;
-      void playBeeps(1, 740);
+      void playBeeps(1, 466);
     }
   }, [remaining, beepEvery]);
 
@@ -89,7 +102,7 @@ export function FloatingTimer() {
   }
 
   const { height } = useWindowDimensions();
-  const bottom = Math.max(insets.bottom, 8) + 64;
+  const bottom = Math.max(insets.bottom, 16);
   const panelHeight = Math.max(220, height - bottom - 96);
 
   return (
@@ -116,7 +129,7 @@ export function FloatingTimer() {
                   className={`rounded-full px-3 py-2 ${selected ? "bg-[#c6f135]" : "bg-[#e6e8e0] dark:bg-black/30"}`}
                   onPress={() => chooseDuration(preset)}
                 >
-                  <Text className={`text-sm font-semibold ${selected ? "text-[#142000]" : "text-[#161915] dark:text-white"}`}>{presetLabel(preset)}</Text>
+                  {chipText(preset, `text-sm font-semibold ${selected ? "text-[#142000]" : "text-[#161915] dark:text-white"}`)}
                 </Pressable>
               );
             })}
@@ -129,11 +142,11 @@ export function FloatingTimer() {
                 <Pressable
                   key={interval}
                   accessibilityRole="button"
-                  accessibilityLabel={interval === 0 ? "Sin pitidos intermedios" : `Pitido cada ${interval} segundos`}
+                  accessibilityLabel={interval === 0 ? "Sin pitidos intermedios" : `Pitido cada ${presetLabel(interval)}`}
                   className={`rounded-full px-3 py-2 ${selected ? "bg-[#c6f135]" : "bg-[#e6e8e0] dark:bg-black/30"}`}
                   onPress={() => setBeepEvery(interval)}
                 >
-                  <Text className={`text-sm font-semibold ${selected ? "text-[#142000]" : "text-[#161915] dark:text-white"}`}>{interval === 0 ? "Solo al final" : `${interval} s`}</Text>
+                  {interval === 0 ? <Text className={`text-sm font-semibold ${selected ? "text-[#142000]" : "text-[#161915] dark:text-white"}`}>Solo al final</Text> : chipText(interval, `text-sm font-semibold ${selected ? "text-[#142000]" : "text-[#161915] dark:text-white"}`)}
                 </Pressable>
               );
             })}
@@ -168,7 +181,7 @@ export function FloatingTimer() {
               <Text className="font-semibold text-[#161915] dark:text-white">Reiniciar</Text>
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Probar pitido" className="mt-2 items-center py-2" onPress={() => void playBeeps(1, 880)}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Probar pitido" className="mt-2 items-center py-2" onPress={() => void playBeeps(1, 466)}>
             <Text className="text-sm text-[#3d5c0a] dark:text-[#c6f135]">Probar pitido</Text>
           </Pressable>
           </ScrollView>
