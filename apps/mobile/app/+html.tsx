@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export default function Root({ children }: { children: ReactNode }) {
   const { headNodes, bodyNodes } = useServerDocumentContext();
   return (
-    <html lang="es" className="dark">
+    <html lang="es" translate="no" className="dark">
       <head>
         <meta charSet="utf-8" />
         <script dangerouslySetInnerHTML={{ __html: themeBoot }} />

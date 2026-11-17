@@ -65,8 +65,19 @@ export default function ClassesScreen() {
             ) : started ? (
               <Text className="mt-3 text-[#5c655b] dark:text-[#c9d2c8]">En curso</Text>
             ) : (
-              <Pressable className="mt-3 items-center rounded-full bg-[#c6f135] py-3" onPress={() => void book(schedule.id)}>
-                <Text className="font-semibold text-[#142000]">{taken >= schedule.max_capacity ? "Lista de espera" : "Reservar"}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={taken >= schedule.max_capacity ? "Lista de espera" : "Reservar"}
+                className="mt-3 items-center rounded-full bg-[#c6f135] py-3"
+                onPress={() => void book(schedule.id)}
+              >
+                {taken >= schedule.max_capacity ? (
+                  <Text className="font-semibold text-[#142000]" lang="es">Lista de espera</Text>
+                ) : (
+                  <Text className="font-semibold text-[#142000]" lang="es">
+                    Reserv<Text className="font-semibold text-[#142000]" lang="es">ar</Text>
+                  </Text>
+                )}
               </Pressable>
             )}
           </View>
